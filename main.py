@@ -39,7 +39,19 @@ conn.commit()
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='$', intents=intents)
+
+def is_valid_channel():
+    async def predicate(ctx):
+        if isinstance(ctx.channel, discord.DMChannel):
+            await ctx.send("❌ This command cannot be run in DMs.")
+            return False
+        if ctx.channel.id != COMMAND_CHANNEL_ID:
+            await ctx.send("❌ Please use this command in the designated verification channel.")
+            return False
+        return True
+    return commands.check(predicate)
+
 
 # === Set Bot Activity ===
 @bot.event
