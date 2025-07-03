@@ -210,7 +210,7 @@ async def check_sheet(user):
             print(f"[DEBUG] Checking row: code={submitted_code}, username={submitted_username}")
             if submitted_code == code:
                 if fuzzy_match(submitted_username, str(user)):
-                    member = guild.get_member(user.id)
+                    member = await guild.fetch_member(user.id)
                     role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
                     unverified_role = discord.utils.get(guild.roles, name='Unverified')
                     await member.add_roles(role)
