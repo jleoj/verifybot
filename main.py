@@ -113,7 +113,7 @@ async def status(ctx):
     if record:
         code, expires_at_str, verified = record
         status = "✅ Verified" if verified else "⏳ Pending"
-        await ctx.send(f"🔎 Status: {status}\n🔐 Code: `{code}`\n📅 Expires at: `{expires_at_str}`)
+        await ctx.send(f"🔎 Status: {status}\n🔐 Code: `{code}`\n📅 Expires at: `{expires_at_str}`")
     else:
         await ctx.send("ℹ️ No verification record found. Run `!verify` to start.")
 
