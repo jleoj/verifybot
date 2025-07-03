@@ -40,6 +40,14 @@ intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix='$', intents=intents)
 
+# === SET BOT ACTIVITY ===
+@bot.event
+async def on_ready():
+    cleanup_expired_codes.start()
+    activity = discord.Activity(type=discord.ActivityType.playing, name="the auth game")
+    await bot.change_presence(activity=activity)
+    print(f"Bot is ready as {bot.user}")
+
 # === GOOGLE SHEETS SETUP ===
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 creds = service_account.Credentials.from_service_account_file(
