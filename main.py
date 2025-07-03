@@ -15,9 +15,10 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = int(os.getenv('GUILD_ID'))
 VERIFIED_ROLE_NAME = 'Verified'
+LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID'))
 GOOGLE_FORM_LINK = os.getenv('GOOGLE_FORM_LINK')
 GOOGLE_SHEET_ID = os.getenv('GOOGLE_SHEET_ID')
-SHEET_RANGE = 'Form Responses 1!A2:B'  # Now includes both code and username
+SHEET_RANGE = 'Form Responses 1!A2:B'
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
 
 # === DATABASE SETUP ===
@@ -112,7 +113,7 @@ async def status(ctx):
     if record:
         code, expires_at_str, verified = record
         status = "✅ Verified" if verified else "⏳ Pending"
-        await ctx.send(f"🔎 Status: {status}\n🔐 Code: `{code}`\n📅 Expires at: `{expires_at_str}`")
+        await ctx.send(f"🔎 Status: {status}\n🔐 Code: `{code}`\n📅 Expires at: `{expires_at_str}`)
     else:
         await ctx.send("ℹ️ No verification record found. Run `!verify` to start.")
 
@@ -123,7 +124,7 @@ async def checkuser(ctx, member: discord.Member):
     if record:
         code, expires_at_str, verified = record
         status = "✅ Verified" if verified else "⏳ Pending"
-        await ctx.send(f"👤 {member} - {status}\nCode: `{code}`\nExpires at: `{expires_at_str}`")
+        await ctx.send(f"👤 {member} - {status}\nCode: `{code}`\nExpires at: `{expires_at_str}`)
     else:
         await ctx.send(f"❌ No verification record found for {member}.")
 
@@ -150,30 +151,27 @@ async def listunverified(ctx):
         await ctx.send("✅ No unverified users found.")
 
 # === BACKGROUND TASKS ===
-@tasks.loop(seconds=30.0, count=10)
+@tasks.loop(seconds=10.0, count=30)
 async def check_sheet(user):
+    guild = bot.get_guild(GUILD_ID)
+    log_channel = guild.get_channel(LOG_CHANNEL_ID)
+
     record = get_user_code_record(user.id)
-    result = sheets_service.spreadsheets().values().get(
-    spreadsheetId=GOOGLE_SHEET_ID,
-    range=SHEET_RANGE
-).execute()
+    if not record:
+        check_sheet.stop()
+        return
 
-values = result.get('values', [])
-print(f"[DEBUG] Sheet values: {values}")
-
-if not record:
-    check_sheet.stop()
-    return
-        code, expires_at_str, verified = record
-        expires_at = datetime.datetime.fromisoformat(expires_at_str)
+    code, expires_at_str, verified = record
+    expires_at = datetime.datetime.fromisoformat(expires_at_str)
 
     if verified:
+        await log_channel.send(f"✅ {user} is already verified.")
         check_sheet.stop()
         return
 
     if datetime.datetime.utcnow() > expires_at:
-        await ctx.send("❌ Code expired. Run `!verify` again.")
-        print(f"[FAIL] {user} – Code expired.")
+        await user.send("❌ Your verification code has expired. Please run `!verify` again.")
+        await log_channel.send(f"⏱️ Code expired for {user}.")
         check_sheet.stop()
         return
 
@@ -183,25 +181,33 @@ if not record:
     ).execute()
     values = result.get('values', [])
 
+    # Log all responses to Render logs
+    print("📄 Current Google Sheet Responses:")
+    for row in values:
+        print(row)
+
     for row in values:
         if len(row) >= 2:
             submitted_code = row[0].strip().upper()
             submitted_username = row[1].strip()
-            if submitted_code == code and fuzzy_match(submitted_username, str(user)):
-                guild = bot.get_guild(GUILD_ID)
-                member = guild.get_member(user.id)
-                role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
-                unverified_role = discord.utils.get(guild.roles, name='Unverified')
-                await member.add_roles(role)
-                if unverified_role in member.roles:
-                    await member.remove_roles(unverified_role)
-                await ctx.send("🎉 You've been verified!")
-                mark_verified(user.id)
-                print(f"[SUCCESS] {user} has been verified.")
-                check_sheet.stop()
-                return
+            if submitted_code == code:
+                if fuzzy_match(submitted_username, str(user)):
+                    member = guild.get_member(user.id)
+                    role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
+                    unverified_role = discord.utils.get(guild.roles, name='Unverified')
+                    await member.add_roles(role)
+                    if unverified_role in member.roles:
+                        await member.remove_roles(unverified_role)
+                    await user.send("🎉 You have been verified!")
+                    await log_channel.send(f"✅ {user} verified successfully with code `{code}`.")
+                    mark_verified(user.id)
+                    check_sheet.stop()
+                    return
+                else:
+                    await log_channel.send(f"❌ Fuzzy match failed for {user}. Form username: '{submitted_username}'")
 
-    print(f"[PENDING] {user} – Code submitted not matched yet.")
+    await user.send("⚠️ We couldn't find your form submission yet. Make sure your code and Discord username were entered correctly.")
+    await log_channel.send(f"⚠️ No match yet for {user} with code `{code}`.")
 
 @tasks.loop(minutes=1)
 async def cleanup_expired_codes():
