@@ -98,13 +98,14 @@ async def verify(ctx):
     await user.send(f"🔐 Your code: `{code}`\n⏳ Expires in 5 minutes.\n📋 Form: {GOOGLE_FORM_LINK}\n👉 Please enter your Discord username as it appears: {user}")
     await ctx.send("✅ Check your DMs.")
     check_sheet.start(user)
+    remind_pending.start(user)
 
 @bot.command()
 async def retry(ctx):
     user = ctx.author
     cursor.execute("DELETE FROM codes WHERE user_id = ? AND verified = 0", (str(user.id),))
     conn.commit()
-    await ctx.send("🔁 Your previous code was removed. Run `!verify` again.")
+    await ctx.send("🔁 Your previous code was removed. Run `$verify` again.")
 
 @bot.command()
 async def status(ctx):
@@ -115,7 +116,7 @@ async def status(ctx):
         status = "✅ Verified" if verified else "⏳ Pending"
         await ctx.send(f"🔎 Status: {status}\n🔐 Code: `{code}`\n📅 Expires at: `{expires_at_str}`")
     else:
-        await ctx.send("ℹ️ No verification record found. Run `!verify` to start.")
+        await ctx.send("ℹ️ No verification record found. Run `$verify` to start.")
 
 @bot.command()
 @commands.has_permissions(manage_roles=True)
@@ -167,12 +168,14 @@ async def check_sheet(user):
     if verified:
         await log_channel.send(f"✅ {user} is already verified.")
         check_sheet.stop()
+        remind_pending.stop()
         return
 
     if datetime.datetime.utcnow() > expires_at:
         await user.send("❌ Your verification code has expired. Please run `!verify` again.")
         await log_channel.send(f"⏱️ Code expired for {user}.")
         check_sheet.stop()
+        remind_pending.stop()
         return
 
     result = sheets_service.spreadsheets().values().get(
@@ -180,11 +183,6 @@ async def check_sheet(user):
         range=SHEET_RANGE
     ).execute()
     values = result.get('values', [])
-
-    # Log all responses to Render logs
-    print("📄 Current Google Sheet Responses:")
-    for row in values:
-        print(row)
 
     for row in values:
         if len(row) >= 2:
@@ -202,12 +200,14 @@ async def check_sheet(user):
                     await log_channel.send(f"✅ {user} verified successfully with code `{code}`.")
                     mark_verified(user.id)
                     check_sheet.stop()
+                    remind_pending.stop()
                     return
-                else:
-                    await log_channel.send(f"❌ Fuzzy match failed for {user}. Form username: '{submitted_username}'")
 
-    await user.send("⚠️ We couldn't find your form submission yet. Make sure your code and Discord username were entered correctly.")
-    await log_channel.send(f"⚠️ No match yet for {user} with code `{code}`.")
+@tasks.loop(minutes=1.0, count=5)
+async def remind_pending(user):
+    record = get_user_code_record(user.id)
+    if record and not is_user_verified(user.id):
+        await user.send("🔔 Reminder: Don’t forget to fill out the verification form using the code you received.")
 
 @tasks.loop(minutes=1)
 async def cleanup_expired_codes():
