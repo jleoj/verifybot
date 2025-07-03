@@ -161,12 +161,11 @@ async def check_sheet(user):
 values = result.get('values', [])
 print(f"[DEBUG] Sheet values: {values}")
 
-    if not record:
-        check_sheet.stop()
-        return
-
-    code, expires_at_str, verified = record
-    expires_at = datetime.datetime.fromisoformat(expires_at_str)
+if not record:
+    check_sheet.stop()
+    return
+        code, expires_at_str, verified = record
+        expires_at = datetime.datetime.fromisoformat(expires_at_str)
 
     if verified:
         check_sheet.stop()
