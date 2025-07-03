@@ -172,7 +172,7 @@ async def check_sheet(user):
         return
 
     if datetime.datetime.utcnow() > expires_at:
-        await user.send("❌ Your verification code has expired. Please run `!verify` again.")
+        await user.send("❌ Your verification code has expired. Please run `?verify` again.")
         await log_channel.send(f"⏱️ Code expired for {user}.")
         check_sheet.stop()
         remind_pending.stop()
