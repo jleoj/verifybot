@@ -124,7 +124,7 @@ async def checkuser(ctx, member: discord.Member):
     if record:
         code, expires_at_str, verified = record
         status = "✅ Verified" if verified else "⏳ Pending"
-        await ctx.send(f"👤 {member} - {status}\nCode: `{code}`\nExpires at: `{expires_at_str}`)
+        await ctx.send(f"👤 {member} - {status}\nCode: `{code}`\nExpires at: `{expires_at_str}`")
     else:
         await ctx.send(f"❌ No verification record found for {member}.")
 
