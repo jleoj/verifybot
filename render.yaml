@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: discord-verification-bot
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: GOOGLE_FORM_LINK
+        sync: false
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: SERVICE_ACCOUNT_FILE
+        sync: false
