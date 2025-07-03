@@ -153,6 +153,14 @@ async def listunverified(ctx):
 @tasks.loop(seconds=30.0, count=10)
 async def check_sheet(user):
     record = get_user_code_record(user.id)
+    result = sheets_service.spreadsheets().values().get(
+    spreadsheetId=GOOGLE_SHEET_ID,
+    range=SHEET_RANGE
+).execute()
+
+values = result.get('values', [])
+print(f"[DEBUG] Sheet values: {values}")
+
     if not record:
         check_sheet.stop()
         return
