@@ -85,8 +85,7 @@ async def verify(ctx):
         else:
             expires_at = datetime.datetime.fromisoformat(expires_at_str)
             remaining = int((expires_at - datetime.datetime.utcnow()).total_seconds() / 60)
-            await user.send(f"⏳ You already have a code: `{code}` (expires in {remaining} min)
-Please fill the form: {GOOGLE_FORM_LINK}")
+            await user.send(f"⏳ You already have a code: `{code}` (expires in {remaining} min)\nPlease fill the form: {GOOGLE_FORM_LINK}")
             await ctx.send("✅ Check your DMs.")
             return
 
@@ -94,10 +93,7 @@ Please fill the form: {GOOGLE_FORM_LINK}")
     expires_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
     store_code(user.id, code, expires_at)
 
-    await user.send(f"🔐 Your code: `{code}`
-⏳ Expires in 5 minutes.
-📋 Form: {GOOGLE_FORM_LINK}
-👉 Please enter your Discord username as it appears: {user}")
+    await user.send(f"🔐 Your code: `{code}`\n⏳ Expires in 5 minutes.\n📋 Form: {GOOGLE_FORM_LINK}\n👉 Please enter your Discord username as it appears: {user}")
     await ctx.send("✅ Check your DMs.")
     check_sheet.start(user)
 
@@ -187,7 +183,7 @@ async def check_sheet(user):
                 guild = bot.get_guild(GUILD_ID)
                 member = guild.get_member(user.id)
                 role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
-unverified_role = discord.utils.get(guild.roles, name='Unverified')
+                unverified_role = discord.utils.get(guild.roles, name='Unverified')
                 await member.add_roles(role)
                 if unverified_role in member.roles:
                     await member.remove_roles(unverified_role)
