@@ -203,7 +203,7 @@ async def check_sheet(user):
                     remind_pending.stop()
                     return
 
-@tasks.loop(minutes=1.0, count=5)
+@tasks.loop(minutes=2.5, count=5)
 async def remind_pending(user):
     record = get_user_code_record(user.id)
     if record and not is_user_verified(user.id):
