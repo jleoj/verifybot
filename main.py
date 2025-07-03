@@ -20,6 +20,7 @@ GOOGLE_FORM_LINK = os.getenv('GOOGLE_FORM_LINK')
 GOOGLE_SHEET_ID = os.getenv('GOOGLE_SHEET_ID')
 SHEET_RANGE = 'Form Responses 1!A2:B'
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
+COMMAND_CHANNEL_ID = int(os.getenv('COMMAND_CHANNEL_ID'))
 
 # === DATABASE SETUP ===
 conn = sqlite3.connect('verification.db')
@@ -84,6 +85,7 @@ def fuzzy_match(a, b):
 
 # === BOT COMMANDS ===
 @bot.command()
+@is_valid_channel()
 async def verify(ctx):
     user = ctx.author
     record = get_user_code_record(user.id)
@@ -110,6 +112,7 @@ async def verify(ctx):
     remind_pending.start(user)
 
 @bot.command()
+@is_valid_channel()
 async def retry(ctx):
     user = ctx.author
     cursor.execute("DELETE FROM codes WHERE user_id = ? AND verified = 0", (str(user.id),))
@@ -117,6 +120,7 @@ async def retry(ctx):
     await ctx.send("🔁 Your previous code was removed. Run `$verify` again.")
 
 @bot.command()
+@is_valid_channel()
 async def status(ctx):
     user = ctx.author
     record = get_user_code_record(user.id)
@@ -128,6 +132,7 @@ async def status(ctx):
         await ctx.send("ℹ️ No verification record found. Run `$verify` to start.")
 
 @bot.command()
+@is_valid_channel()
 @commands.has_permissions(manage_roles=True)
 async def checkuser(ctx, member: discord.Member):
     record = get_user_code_record(member.id)
@@ -139,6 +144,7 @@ async def checkuser(ctx, member: discord.Member):
         await ctx.send(f"❌ No verification record found for {member}.")
 
 @bot.command()
+@is_valid_channel()
 @commands.has_permissions(manage_roles=True)
 async def resetuser(ctx, member: discord.Member):
     cursor.execute("DELETE FROM codes WHERE user_id = ?", (str(member.id),))
@@ -146,6 +152,7 @@ async def resetuser(ctx, member: discord.Member):
     await ctx.send(f"🔁 Verification record for {member} has been reset.")
 
 @bot.command()
+@is_valid_channel()
 @commands.has_permissions(manage_roles=True)
 async def listunverified(ctx):
     cursor.execute("SELECT user_id FROM codes WHERE verified = 0")
