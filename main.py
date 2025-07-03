@@ -208,4 +208,23 @@ async def on_ready():
     cleanup_expired_codes.start()
     print(f"Bot is ready as {bot.user}")
 
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import socket
+
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
+
+def run_keep_alive():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), KeepAliveHandler)
+    print(f"Starting keep-alive HTTP server on port {port}...")
+    server.serve_forever()
+
+threading.Thread(target=run_keep_alive, daemon=True).start()
+
 bot.run(DISCORD_TOKEN)
