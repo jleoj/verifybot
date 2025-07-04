@@ -229,10 +229,31 @@ async def check_sheet(user):
             print(f"[DEBUG] Checking row: code={submitted_code}, username={submitted_username}")
             if submitted_code == code:
                 if fuzzy_match(submitted_username, str(user)):
-                    member = await guild.fetch_member(user.id)
                     role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
+                    if role is None:
+                        await log_channel.send("❌ Could not find 'Verified' role in the server.")
+                        check_sheet.stop()
+                        remind_pending.stop()
+                        return
+                    
                     unverified_role = discord.utils.get(guild.roles, name='Unverified')
-                    await member.add_roles(role)
+                    
+                    if member is None:
+                        await log_channel.send(f"❌ Could not fetch member object for {user}.")
+                        check_sheet.stop()
+                        remind_pending.stop()
+                        return
+                    
+                    try:
+                        await member.add_roles(role)
+                        if unverified_role in member.roles:
+                            await member.remove_roles(unverified_role)
+                    except Exception as e:
+                        await log_channel.send(f\"⚠️ Error assigning roles to {user}: {e}\")
+                        check_sheet.stop()
+                        remind_pending.stop()
+                        return
+                    
                     if unverified_role in member.roles:
                         await member.remove_roles(unverified_role)
                     await user.send("🎉 You have been verified!")
