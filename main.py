@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands, tasks
-import sqlite3
 import random
 import string
 import datetime
@@ -11,36 +10,25 @@ from dotenv import load_dotenv
 import difflib
 
 # === LOAD ENVIRONMENT ===
+ALLOWED_DOMAINS = os.getenv('ALLOWED_DOMAINS', '').split(',')
 load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = int(os.getenv('GUILD_ID'))
 VERIFIED_ROLE_NAME = 'Verified'
 LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID'))
+COMMAND_CHANNEL_ID = int(os.getenv('COMMAND_CHANNEL_ID'))
 GOOGLE_FORM_LINK = os.getenv('GOOGLE_FORM_LINK')
 GOOGLE_SHEET_ID = os.getenv('GOOGLE_SHEET_ID')
-SHEET_RANGE = 'Form Responses 1!A2:B'
+SHEET_RANGE = 'Bot Records!A2:E'
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
-COMMAND_CHANNEL_ID = int(os.getenv('COMMAND_CHANNEL_ID'))
-
-# === DATABASE SETUP ===
-conn = sqlite3.connect('verification.db')
-cursor = conn.cursor()
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS codes (
-    user_id TEXT PRIMARY KEY,
-    code TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    verified INTEGER DEFAULT 0
-)
-''')
-conn.commit()
 
 # === DISCORD SETUP ===
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-bot = commands.Bot(command_prefix='$', intents=intents)
+bot = commands.Bot(command_prefix='!', intents=intents)
 
+# === CHANNEL CHECK DECORATOR ===
 def is_valid_channel():
     async def predicate(ctx):
         if isinstance(ctx.channel, discord.DMChannel):
@@ -52,17 +40,8 @@ def is_valid_channel():
         return True
     return commands.check(predicate)
 
-
-# === Set Bot Activity ===
-@bot.event
-async def on_ready():
-    cleanup_expired_codes.start()
-    activity = discord.Activity(type=discord.ActivityType.watching, name="the verification form")
-    await bot.change_presence(activity=activity)
-    print(f"Bot is ready as {bot.user}")
-
 # === GOOGLE SHEETS SETUP ===
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 creds = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 sheets_service = build('sheets', 'v4', credentials=creds)
@@ -71,29 +50,42 @@ sheets_service = build('sheets', 'v4', credentials=creds)
 def generate_code(length=8):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
-def store_code(user_id, code, expires_at):
-    cursor.execute('''
-    INSERT OR REPLACE INTO codes (user_id, code, expires_at)
-    VALUES (?, ?, ?)
-    ''', (str(user_id), code, expires_at.isoformat()))
-    conn.commit()
+def get_rows():
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=GOOGLE_SHEET_ID,
+        range=SHEET_RANGE
+    ).execute()
+    return result.get('values', [])
 
-def get_user_code_record(user_id):
-    cursor.execute("SELECT code, expires_at, verified FROM codes WHERE user_id = ?", (str(user_id),))
-    return cursor.fetchone()
+def append_row(row):
+    sheets_service.spreadsheets().values().append(
+        spreadsheetId=GOOGLE_SHEET_ID,
+        range='Bot Records!A2',
+        valueInputOption='RAW',
+        body={'values': [row]}
+    ).execute()
+
+def update_verified(user_id):
+    rows = get_rows()
+    for i, row in enumerate(rows):
+        if len(row) > 3 and row[3] == str(user_id):
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=GOOGLE_SHEET_ID,
+                range=f'Bot Records!E{i+2}',
+                valueInputOption='RAW',
+                body={'values': [['1']]}
+            ).execute()
+            break
 
 def is_user_verified(user_id):
-    cursor.execute("SELECT verified FROM codes WHERE user_id = ?", (str(user_id),))
-    row = cursor.fetchone()
-    return row and row[0] == 1
-
-def mark_verified(user_id):
-    cursor.execute("UPDATE codes SET verified = 1 WHERE user_id = ?", (str(user_id),))
-    conn.commit()
+    rows = get_rows()
+    for row in rows:
+        if len(row) > 3 and row[3] == str(user_id) and len(row) > 4 and row[4] == '1':
+            return True
+    return False
 
 def fuzzy_match(a, b):
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= 0.85
-
 
 # === BOT COMMANDS ===
 @bot.command()
@@ -185,85 +177,45 @@ async def check_sheet(user):
     guild = bot.get_guild(GUILD_ID)
     log_channel = guild.get_channel(LOG_CHANNEL_ID)
 
-    print(f"[DEBUG] Running check_sheet for user {user} ({user.id})")
-
-    record = get_user_code_record(user.id)
-    if not record:
-        print("[DEBUG] No verification record found.")
-        check_sheet.stop()
-        return
-
-    code, expires_at_str, verified = record
-    print(f"[DEBUG] Fetched code: {code}, Verified: {verified}, Expires at: {expires_at_str}")
-
-    expires_at = datetime.datetime.fromisoformat(expires_at_str)
-
-    if verified:
-        await log_channel.send(f"✅ {user} is already verified.")
-        check_sheet.stop()
-        remind_pending.stop()
-        return
-
-    if datetime.datetime.utcnow() > expires_at:
-        await user.send("❌ Your verification code has expired. Please run `!verify` again.")
-        await log_channel.send(f"⏱️ Code expired for {user}.")
-        check_sheet.stop()
-        remind_pending.stop()
-        return
-
     try:
-        result = sheets_service.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=SHEET_RANGE
-        ).execute()
-        values = result.get('values', [])
-        print(f"[DEBUG] Retrieved values from sheet: {values}")
+        rows = get_rows()
+        for row in rows:
+            if len(row) >= 5:
+                code, submitted_username, expires_at_str, user_id_str, verified_flag = row
+                if user_id_str == str(user.id) and verified_flag == '0':
+                    if datetime.datetime.utcnow() > datetime.datetime.fromisoformat(expires_at_str):
+                        await user.send("❌ Your verification code has expired. Please run `!verify` again.")
+                        await log_channel.send(f"⏱️ Code expired for {user}.")
+                        check_sheet.stop()
+                        return
+                    if fuzzy_match(submitted_username, str(user)):
+                    if len(row) > 5:
+                        email = row[5].strip().lower()
+                        if not any(email.endswith(f"@{domain.strip().lower()}") for domain in ALLOWED_DOMAINS if domain):
+                            await user.send("❌ Your email domain is not allowed. Verification denied.")
+                            await log_channel.send(f"❌ {user} used disallowed email domain: {email}")
+                            check_sheet.stop()
+                            return
+                        try:
+                            member = await guild.fetch_member(user.id)
+                            role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
+                            unverified_role = discord.utils.get(guild.roles, name='Unverified')
+                            if role:
+                                await member.add_roles(role)
+                            if unverified_role and unverified_role in member.roles:
+                                await member.remove_roles(unverified_role)
+                            await user.send("🎉 You have been verified!")
+                            await log_channel.send(f"✅ {user} verified successfully with code `{code}`.")
+                            update_verified(user.id)
+                            check_sheet.stop()
+                            return
+                        except discord.NotFound:
+                            await log_channel.send(f"❌ Could not find member {user} in guild.")
+                            check_sheet.stop()
+                            return
     except Exception as e:
-        print(f"[ERROR] Google Sheets API error: {e}")
-        return
-
-    for row in values:
-        if len(row) >= 2:
-            submitted_code = row[0].strip().upper()
-            submitted_username = row[1].strip()
-            print(f"[DEBUG] Checking row: code={submitted_code}, username={submitted_username}")
-            if submitted_code == code:
-                if fuzzy_match(submitted_username, str(user)):
-                    role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
-                    if role is None:
-                        await log_channel.send("❌ Could not find 'Verified' role in the server.")
-                        check_sheet.stop()
-                        remind_pending.stop()
-                        return
-                    
-                    unverified_role = discord.utils.get(guild.roles, name='Unverified')
-                    
-                    if member is None:
-                        await log_channel.send(f"❌ Could not fetch member object for {user}.")
-                        check_sheet.stop()
-                        remind_pending.stop()
-                        return
-                    
-                    try:
-                        await member.add_roles(role)
-                        if unverified_role in member.roles:
-                            await member.remove_roles(unverified_role)
-                    except Exception as e:
-                        await log_channel.send(f"⚠️ Error assigning roles to {user}: {e}")
-                        check_sheet.stop()
-                        remind_pending.stop()
-                        return
-                    
-                    if unverified_role in member.roles:
-                        await member.remove_roles(unverified_role)
-                    await user.send("🎉 You have been verified!")
-                    await log_channel.send(f"✅ {user} verified successfully with code `{code}`.")
-                    mark_verified(user.id)
-                    check_sheet.stop()
-                    remind_pending.stop()
-                    return
-
-# [Remind and cleanup tasks unchanged]
+        await log_channel.send(f"⚠️ Error during verification check: {e}")
+        check_sheet.stop()
 
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -285,3 +237,4 @@ def run_keep_alive():
 threading.Thread(target=run_keep_alive, daemon=True).start()
 
 bot.run(DISCORD_TOKEN)
+
