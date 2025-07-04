@@ -189,8 +189,7 @@ async def check_sheet(user):
                         check_sheet.stop()
                         return
                     if fuzzy_match(submitted_username, str(user)):
-                    if len(row) > 5:
-                        email = row[5].strip().lower()
+                    email = row[3].strip().lower()
                         if not any(email.endswith(f"@{domain.strip().lower()}") for domain in ALLOWED_DOMAINS if domain):
                             await user.send("❌ Your email domain is not allowed. Verification denied.")
                             await log_channel.send(f"❌ {user} used disallowed email domain: {email}")
