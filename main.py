@@ -249,7 +249,7 @@ async def check_sheet(user):
                         if unverified_role in member.roles:
                             await member.remove_roles(unverified_role)
                     except Exception as e:
-                        await log_channel.send(f\"⚠️ Error assigning roles to {user}: {e}\")
+                        await log_channel.send(f"⚠️ Error assigning roles to {user}: {e}")
                         check_sheet.stop()
                         remind_pending.stop()
                         return
