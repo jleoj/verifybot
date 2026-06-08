@@ -1,0 +1,21 @@
+{
+  "name": "discord-verification-bot",
+  "version": "1.0.0",
+  "description": "Discord verification bot with Google Forms/Sheets validation and a moderator dashboard.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "register:commands": "node scripts/register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "googleapis": "^140.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
